@@ -62,7 +62,8 @@ ${paper.abstract}`;
       { role: 'user', content: userPrompt },
     ],
     temperature: 0.3,
-    max_tokens: 300,
+    max_tokens: 1500,
+    reasoning_effort: 'low',
   });
 
   const content = response.choices[0]?.message?.content || '';
@@ -134,7 +135,8 @@ ${paper.abstract}`;
       { role: 'user', content: userPrompt },
     ],
     temperature: 0.5,
-    max_tokens: 1000,
+    max_tokens: 4000,
+    reasoning_effort: 'low',
   });
 
   const content = response.choices[0]?.message?.content || '';
