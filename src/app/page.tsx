@@ -36,6 +36,12 @@ type Paper = {
   opportunity?: Opportunity;
 };
 
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00';
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 function ScoreBadge({ score }: { score: number }) {
   const colors = score >= 7 
     ? 'bg-green-100 text-green-800 border-green-300'
@@ -146,6 +152,13 @@ export default function FeedPage() {
   const [scoring, setScoring] = useState(false);
   const [minScore, setMinScore] = useState<number | ''>('');
   const [status, setStatus] = useState('');
+  const [totalCost, setTotalCost] = useState<number | null>(null);
+
+  const fetchUsage = useCallback(async () => {
+    const res = await fetch('/api/usage');
+    const data = await res.json();
+    setTotalCost(data.total_cost_usd);
+  }, []);
 
   const fetchPapers = useCallback(async () => {
     setLoading(true);
@@ -160,7 +173,8 @@ export default function FeedPage() {
 
   useEffect(() => {
     fetchPapers();
-  }, [fetchPapers]);
+    fetchUsage();
+  }, [fetchPapers, fetchUsage]);
 
   const handleScan = async () => {
     setScanning(true);
@@ -188,6 +202,7 @@ export default function FeedPage() {
 
       setStatus(`Done! Scored ${scoreData.scored} papers.`);
       await fetchPapers();
+      await fetchUsage();
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
@@ -222,6 +237,15 @@ export default function FeedPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-semibold text-gray-900">Research Scout</h1>
             <div className="flex items-center gap-3">
+              {totalCost !== null && (
+                <Link
+                  href="/settings"
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                  title="Total LLM spend — see breakdown in Settings"
+                >
+                  Spend: {formatCost(totalCost)}
+                </Link>
+              )}
               <Link href="/tracker" className="text-gray-600 hover:text-gray-900">
                 Tracker
               </Link>

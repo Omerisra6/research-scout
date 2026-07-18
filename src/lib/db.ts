@@ -63,6 +63,32 @@ export type PaperWithScore = Paper & {
   opportunity?: Opportunity;
 };
 
+export type LlmUsage = {
+  id: number;
+  kind: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+  created_at: string;
+};
+
+export type UsageSummary = {
+  total_cost_usd: number;
+  total_calls: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  by_kind: Array<{
+    kind: string;
+    model: string;
+    calls: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    cost_usd: number;
+  }>;
+  today_cost_usd: number;
+};
+
 function getDb(): Database.Database {
   if (!db) {
     db = new Database(DB_PATH);
@@ -146,6 +172,18 @@ function initSchema(database: Database.Database) {
   if (!scoreColumns.some(c => c.name === 'discovery')) {
     database.exec("ALTER TABLE scores ADD COLUMN discovery TEXT NOT NULL DEFAULT ''");
   }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS llm_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      model TEXT NOT NULL,
+      prompt_tokens INTEGER NOT NULL,
+      completion_tokens INTEGER NOT NULL,
+      cost_usd REAL NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
 }
 
 export function getProfile(): Profile {
@@ -451,4 +489,50 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
 export function deleteOpportunity(paperId: number): void {
   const db = getDb();
   db.prepare('DELETE FROM opportunities WHERE paper_id = ?').run(paperId);
+}
+
+export function recordLlmUsage(data: Omit<LlmUsage, 'id' | 'created_at'>): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO llm_usage (kind, model, prompt_tokens, completion_tokens, cost_usd)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(data.kind, data.model, data.prompt_tokens, data.completion_tokens, data.cost_usd);
+}
+
+export function getUsageSummary(): UsageSummary {
+  const db = getDb();
+
+  const totals = db.prepare(`
+    SELECT 
+      COALESCE(SUM(cost_usd), 0) as total_cost_usd,
+      COUNT(*) as total_calls,
+      COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+      COALESCE(SUM(completion_tokens), 0) as total_completion_tokens
+    FROM llm_usage
+  `).get() as { total_cost_usd: number; total_calls: number; total_prompt_tokens: number; total_completion_tokens: number };
+
+  const byKind = db.prepare(`
+    SELECT 
+      kind,
+      model,
+      COUNT(*) as calls,
+      SUM(prompt_tokens) as prompt_tokens,
+      SUM(completion_tokens) as completion_tokens,
+      SUM(cost_usd) as cost_usd
+    FROM llm_usage
+    GROUP BY kind, model
+    ORDER BY cost_usd DESC
+  `).all() as UsageSummary['by_kind'];
+
+  const today = db.prepare(`
+    SELECT COALESCE(SUM(cost_usd), 0) as today_cost_usd
+    FROM llm_usage
+    WHERE date(created_at) = date('now')
+  `).get() as { today_cost_usd: number };
+
+  return {
+    ...totals,
+    by_kind: byKind,
+    today_cost_usd: today.today_cost_usd,
+  };
 }

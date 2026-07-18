@@ -12,8 +12,36 @@ type Profile = {
   updated_at: string;
 };
 
+type UsageSummary = {
+  total_cost_usd: number;
+  total_calls: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  by_kind: Array<{
+    kind: string;
+    model: string;
+    calls: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    cost_usd: number;
+  }>;
+  today_cost_usd: number;
+};
+
+function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00';
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+const KIND_LABELS: Record<string, string> = {
+  triage: 'Feed scoring (triage)',
+  deepdive: 'Deep-dive analysis',
+};
+
 export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -21,6 +49,9 @@ export default function SettingsPage() {
     fetch('/api/profile')
       .then(res => res.json())
       .then(setProfile);
+    fetch('/api/usage')
+      .then(res => res.json())
+      .then(setUsage);
   }, []);
 
   const handleSave = async () => {
@@ -147,6 +178,52 @@ export default function SettingsPage() {
             and target markets where big players are less likely to compete.
           </p>
         </div>
+
+        {usage && (
+          <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">LLM Cost Tracking</h2>
+              <div className="text-right">
+                <p className="text-2xl font-semibold text-gray-900">{formatCost(usage.total_cost_usd)}</p>
+                <p className="text-xs text-gray-500">total · {formatCost(usage.today_cost_usd)} today</p>
+              </div>
+            </div>
+
+            {usage.by_kind.length === 0 ? (
+              <p className="text-sm text-gray-500">No LLM calls recorded yet. Costs will appear here after your first scan.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-200">
+                      <th className="py-2 pr-4 font-medium">Operation</th>
+                      <th className="py-2 pr-4 font-medium">Model</th>
+                      <th className="py-2 pr-4 font-medium text-right">Calls</th>
+                      <th className="py-2 pr-4 font-medium text-right">Input tokens</th>
+                      <th className="py-2 pr-4 font-medium text-right">Output tokens</th>
+                      <th className="py-2 font-medium text-right">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.by_kind.map((row, i) => (
+                      <tr key={i} className="border-b border-gray-100 text-gray-700">
+                        <td className="py-2 pr-4">{KIND_LABELS[row.kind] || row.kind}</td>
+                        <td className="py-2 pr-4 text-gray-500">{row.model}</td>
+                        <td className="py-2 pr-4 text-right">{row.calls}</td>
+                        <td className="py-2 pr-4 text-right">{row.prompt_tokens.toLocaleString()}</td>
+                        <td className="py-2 pr-4 text-right">{row.completion_tokens.toLocaleString()}</td>
+                        <td className="py-2 text-right font-medium">{formatCost(row.cost_usd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-xs text-gray-400">
+                  Costs are computed from actual token usage reported by the API, using published per-token prices. Output tokens include model reasoning tokens.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { recordLlmUsage } from '@/lib/db';
 
 function getClient(): OpenAI {
   return new OpenAI({
@@ -13,6 +14,42 @@ function getModel(): string {
 
 function getTriageModel(): string {
   return process.env.LLM_TRIAGE_MODEL || getModel();
+}
+
+const MODEL_PRICING_PER_1M: Record<string, { input: number; output: number }> = {
+  'gemini-3-flash-preview': { input: 0.5, output: 3.0 },
+  'gemini-3.1-flash-lite': { input: 0.25, output: 1.5 },
+  'gemini-3.5-flash': { input: 0.5, output: 3.0 },
+  'gemini-2.5-flash': { input: 0.3, output: 2.5 },
+  'gemini-2.5-flash-lite': { input: 0.1, output: 0.4 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'gpt-4o': { input: 2.5, output: 10.0 },
+};
+
+function computeCostUsd(model: string, promptTokens: number, completionTokens: number): number {
+  const pricing = MODEL_PRICING_PER_1M[model];
+  if (!pricing) return 0;
+  return (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
+}
+
+function trackUsage(
+  kind: string,
+  model: string,
+  usage: { prompt_tokens?: number; completion_tokens?: number } | undefined
+): void {
+  const promptTokens = usage?.prompt_tokens || 0;
+  const completionTokens = usage?.completion_tokens || 0;
+  try {
+    recordLlmUsage({
+      kind,
+      model,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      cost_usd: computeCostUsd(model, promptTokens, completionTokens),
+    });
+  } catch (error) {
+    console.error('Failed to record LLM usage:', error);
+  }
 }
 
 export type ScoreResult = {
@@ -74,8 +111,9 @@ Categories: ${p.categories}
 Abstract: ${truncateAbstract(p.abstract)}`)
     .join('\n\n');
 
+  const model = getTriageModel();
   const response = await client.chat.completions.create({
-    model: getTriageModel(),
+    model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Papers to evaluate:\n\n${paperList}` },
@@ -84,6 +122,8 @@ Abstract: ${truncateAbstract(p.abstract)}`)
     max_tokens: 300 * papers.length + 1000,
     reasoning_effort: 'low',
   });
+
+  trackUsage('triage', model, response.usage);
 
   const content = response.choices[0]?.message?.content || '';
 
@@ -153,8 +193,9 @@ URL: ${paper.url}
 Abstract:
 ${paper.abstract}`;
 
+  const model = getModel();
   const response = await client.chat.completions.create({
-    model: getModel(),
+    model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
@@ -163,6 +204,8 @@ ${paper.abstract}`;
     max_tokens: 4000,
     reasoning_effort: 'low',
   });
+
+  trackUsage('deepdive', model, response.usage);
 
   const content = response.choices[0]?.message?.content || '';
   
