@@ -22,7 +22,7 @@ export async function POST() {
     );
   }
 
-  const papers = await fetchArxivPapers(categories, keywords, 50);
+  const papers = await fetchArxivPapers(categories, keywords, 10);
   
   const inserted = papers.map(paper => upsertPaper(paper));
 

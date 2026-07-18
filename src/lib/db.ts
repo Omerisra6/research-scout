@@ -71,18 +71,29 @@ function getDb(): Database.Database {
   return db;
 }
 
+const DEFAULT_INDUSTRIES = 'Fast-adapting software/ML/data builder; buyer connection in banking; startup CEO network across sectors; strong PM network (building a PM tool); devtools domain knowledge; sports/NBA analytics interest';
+const DEFAULT_INTERESTS = 'Applied ML/LLM products, developer tools, PM/productivity tooling, data products, quantitative finance applications, sports analytics';
+const DEFAULT_CATEGORIES = 'cs.SE,cs.HC,cs.IR,cs.CL,q-fin.RM,q-fin.CP,q-fin.ST,stat.AP';
+
 function initSchema(database: Database.Database) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS profile (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       industries TEXT NOT NULL DEFAULT '',
       interests TEXT NOT NULL DEFAULT '',
-      arxiv_categories TEXT NOT NULL DEFAULT 'cs.AI,cs.LG',
+      arxiv_categories TEXT NOT NULL DEFAULT '${DEFAULT_CATEGORIES}',
       keywords TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     INSERT OR IGNORE INTO profile (id) VALUES (1);
+    
+    UPDATE profile SET 
+      industries = '${DEFAULT_INDUSTRIES}',
+      interests = '${DEFAULT_INTERESTS}',
+      arxiv_categories = '${DEFAULT_CATEGORIES}',
+      updated_at = datetime('now')
+    WHERE id = 1 AND industries = '' AND interests = '';
 
     CREATE TABLE IF NOT EXISTS papers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

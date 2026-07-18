@@ -46,17 +46,16 @@ function parseAtomEntry(entry: string): ArxivPaper | null {
   };
 }
 
-export async function fetchArxivPapers(
-  categories: string[],
-  keywords: string[],
-  maxResults = 50
-): Promise<ArxivPaper[]> {
-  const searchTerms: string[] = [];
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-  if (categories.length > 0) {
-    const catQuery = categories.map(c => `cat:${c.trim()}`).join('+OR+');
-    searchTerms.push(`(${catQuery})`);
-  }
+async function fetchCategoryPapers(
+  category: string,
+  keywords: string[],
+  maxResults: number
+): Promise<ArxivPaper[]> {
+  const searchTerms: string[] = [`cat:${category.trim()}`];
 
   if (keywords.length > 0) {
     const kwQuery = keywords.map(k => `all:${k.trim()}`).join('+OR+');
@@ -77,8 +76,43 @@ export async function fetchArxivPapers(
 
   const xml = await response.text();
   const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) || [];
-  
+
   return entries
     .map(parseAtomEntry)
     .filter((p): p is ArxivPaper => p !== null);
+}
+
+export async function fetchArxivPapers(
+  categories: string[],
+  keywords: string[],
+  perCategoryLimit = 10
+): Promise<ArxivPaper[]> {
+  if (categories.length === 0) {
+    return [];
+  }
+
+  const allPapers: ArxivPaper[] = [];
+  const seenIds = new Set<string>();
+
+  for (let i = 0; i < categories.length; i++) {
+    const category = categories[i];
+    
+    if (i > 0) {
+      await sleep(500);
+    }
+
+    try {
+      const papers = await fetchCategoryPapers(category, keywords, perCategoryLimit);
+      for (const paper of papers) {
+        if (!seenIds.has(paper.arxiv_id)) {
+          seenIds.add(paper.arxiv_id);
+          allPapers.push(paper);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to fetch category ${category}:`, error);
+    }
+  }
+
+  return allPapers;
 }
