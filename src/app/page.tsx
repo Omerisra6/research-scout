@@ -190,7 +190,7 @@ export default function FeedPage() {
         return;
       }
 
-      setStatus(`Fetched ${ingestData.fetched} papers. Scoring...`);
+      setStatus(`Fetched ${ingestData.fetched} papers (${ingestData.new} new). Scoring...`);
       setScoring(true);
 
       const scoreRes = await fetch('/api/score', {
@@ -200,7 +200,11 @@ export default function FeedPage() {
       });
       const scoreData = await scoreRes.json();
 
-      setStatus(`Done! Scored ${scoreData.scored} papers.`);
+      setStatus(
+        scoreData.scored > 0
+          ? `Done! ${ingestData.new} new papers, ${scoreData.scored} scored.`
+          : `Done! No new papers to score — no cost incurred.`
+      );
       await fetchPapers();
       await fetchUsage();
     } catch (error) {

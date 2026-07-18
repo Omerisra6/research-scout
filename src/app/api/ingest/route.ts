@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchArxivPapers } from '@/lib/arxiv';
-import { getProfile, upsertPaper } from '@/lib/db';
+import { getProfile, upsertPaper, getPaperByArxivId } from '@/lib/db';
 
 export async function POST() {
   const profile = getProfile();
@@ -23,11 +23,19 @@ export async function POST() {
   }
 
   const papers = await fetchArxivPapers(categories, keywords, 10);
-  
+
+  const existingIds = new Set(
+    papers
+      .map(p => getPaperByArxivId(p.arxiv_id))
+      .filter(Boolean)
+      .map(p => p!.arxiv_id)
+  );
   const inserted = papers.map(paper => upsertPaper(paper));
+  const newCount = papers.length - existingIds.size;
 
   return NextResponse.json({
     fetched: papers.length,
+    new: newCount,
     papers: inserted,
   });
 }
