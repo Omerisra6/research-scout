@@ -25,6 +25,7 @@ type Opportunity = {
 type Paper = {
   id: number;
   arxiv_id: string;
+  source: string;
   title: string;
   abstract: string;
   authors: string;
@@ -46,6 +47,12 @@ type Analysis = {
   risks: string;
   outreach_draft: string;
   analyzed_at: string;
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  arxiv: 'arXiv',
+  openalex: 'OpenAlex',
+  huggingface: 'Hugging Face',
 };
 
 function ScoreBadge({ score }: { score: number }) {
@@ -194,6 +201,9 @@ export default function PaperDetailPage() {
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex items-center gap-2 flex-wrap">
               {paper.score && <ScoreBadge score={paper.score.viability} />}
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                {SOURCE_LABELS[paper.source] || paper.source}
+              </span>
               {paper.opportunity && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
                   Tracking: {paper.opportunity.stage}
@@ -216,7 +226,7 @@ export default function PaperDetailPage() {
                 rel="noopener noreferrer"
                 className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded hover:bg-blue-50"
               >
-                View on arXiv →
+                View on {SOURCE_LABELS[paper.source] || 'source'} →
               </a>
             </div>
           </div>

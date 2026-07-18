@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
-import { fetchArxivPapers } from '@/lib/arxiv';
+import { fetchAllSources } from '@/lib/sources';
 import { getProfile, upsertPaper, getPaperByArxivId } from '@/lib/db';
 
-export async function POST() {
+const DEFAULT_SOURCES = ['arxiv', 'openalex', 'huggingface'];
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  const enabledSources: string[] = Array.isArray(body.sources) ? body.sources : DEFAULT_SOURCES;
+
   const profile = getProfile();
 
   const categories = profile.arxiv_categories
@@ -10,10 +15,18 @@ export async function POST() {
     .map(c => c.trim())
     .filter(Boolean);
 
-  const keywords = profile.keywords
+  let keywords = profile.keywords
     .split(',')
     .map(k => k.trim())
     .filter(Boolean);
+
+  if (keywords.length === 0) {
+    keywords = profile.interests
+      .split(',')
+      .map(k => k.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+  }
 
   if (categories.length === 0 && keywords.length === 0) {
     return NextResponse.json(
@@ -22,20 +35,15 @@ export async function POST() {
     );
   }
 
-  const papers = await fetchArxivPapers(categories, keywords, 10);
+  const { papers, bySource } = await fetchAllSources(categories, keywords, enabledSources);
 
-  const existingIds = new Set(
-    papers
-      .map(p => getPaperByArxivId(p.arxiv_id))
-      .filter(Boolean)
-      .map(p => p!.arxiv_id)
-  );
+  const newCount = papers.filter(p => !getPaperByArxivId(p.arxiv_id)).length;
   const inserted = papers.map(paper => upsertPaper(paper));
-  const newCount = papers.length - existingIds.size;
 
   return NextResponse.json({
     fetched: papers.length,
     new: newCount,
+    by_source: bySource,
     papers: inserted,
   });
 }

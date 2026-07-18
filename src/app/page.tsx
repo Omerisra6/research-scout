@@ -24,6 +24,7 @@ type Opportunity = {
 type Paper = {
   id: number;
   arxiv_id: string;
+  source: string;
   title: string;
   abstract: string;
   authors: string;
@@ -56,6 +57,25 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  arxiv: 'arXiv',
+  openalex: 'OpenAlex',
+  huggingface: 'HF Daily',
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const colors: Record<string, string> = {
+    arxiv: 'bg-red-50 text-red-700',
+    openalex: 'bg-indigo-50 text-indigo-700',
+    huggingface: 'bg-amber-50 text-amber-700',
+  };
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${colors[source] || 'bg-gray-100 text-gray-600'}`}>
+      {SOURCE_LABELS[source] || source}
+    </span>
+  );
+}
+
 function PaperCard({ 
   paper, 
   onDismiss, 
@@ -73,6 +93,7 @@ function PaperCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {paper.score && <ScoreBadge score={paper.score.viability} />}
+            <SourceBadge source={paper.source} />
             {paper.opportunity && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
                 {paper.opportunity.stage}
@@ -121,7 +142,7 @@ function PaperCard({
             rel="noopener noreferrer"
             className="text-sm text-blue-600 hover:text-blue-800"
           >
-            arXiv →
+            {SOURCE_LABELS[paper.source] || 'Source'} →
           </a>
         </div>
         <div className="flex items-center gap-2">
@@ -190,7 +211,12 @@ export default function FeedPage() {
         return;
       }
 
-      setStatus(`Fetched ${ingestData.fetched} papers (${ingestData.new} new). Scoring...`);
+      const sourceSummary = ingestData.by_source
+        ? Object.entries(ingestData.by_source)
+            .map(([s, n]) => `${SOURCE_LABELS[s] || s}: ${n}`)
+            .join(', ')
+        : '';
+      setStatus(`Fetched ${ingestData.fetched} (${ingestData.new} new)${sourceSummary ? ` — ${sourceSummary}` : ''}. Scoring...`);
       setScoring(true);
 
       const scoreRes = await fetch('/api/score', {

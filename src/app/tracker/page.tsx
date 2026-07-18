@@ -15,6 +15,7 @@ type Score = {
 type Paper = {
   id: number;
   arxiv_id: string;
+  source: string;
   title: string;
   abstract: string;
   authors: string;

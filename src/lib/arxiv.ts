@@ -1,5 +1,6 @@
 export type ArxivPaper = {
   arxiv_id: string;
+  source: string;
   title: string;
   abstract: string;
   authors: string;
@@ -37,6 +38,7 @@ function parseAtomEntry(entry: string): ArxivPaper | null {
 
   return {
     arxiv_id: extractArxivId(idUrl),
+    source: 'arxiv',
     title,
     abstract,
     authors,

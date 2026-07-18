@@ -2,7 +2,7 @@
 
 A local web app that helps tech entrepreneurs discover commercial opportunities in academic research. It wraps the full scouting loop:
 
-1. **Monitor** — Pulls new papers from arXiv for your configured categories, fetching each category separately so niche fields aren't drowned out by high-volume ones
+1. **Monitor** — Pulls new papers from multiple free sources (arXiv, OpenAlex, Hugging Face Daily Papers), fetching each arXiv category separately so niche fields aren't drowned out by high-volume ones
 2. **Score** — A cheap LLM triage pass ranks every paper 0-10 for commercial viability *against your personal profile*, and writes a one-sentence plain-language summary of each paper's main discovery
 3. **Deep-dive** — One click on a promising paper generates: product ideas, target customers, why big players would ignore it, key risks, and a draft outreach email to the authors
 4. **Track** — A pipeline board moves opportunities through stages: Inbox → Exploring → Contacted Author → Validating → Active / Dropped
@@ -56,6 +56,16 @@ Visit `/settings` to configure:
 Default categories target a builder profile: `cs.SE` (software engineering), `cs.HC` (human-computer interaction), `cs.IR` (information retrieval), `cs.CL` (NLP/LLMs), `q-fin.RM`/`q-fin.CP`/`q-fin.ST` (quantitative finance), `stat.AP` (applied statistics / sports analytics).
 
 ## How It Works
+
+### Paper sources
+
+All sources are free and need no API key:
+
+- **arXiv** — queried per configured category (e.g. `cs.SE`, `q-fin.RM`), newest first
+- **OpenAlex** — broad cross-disciplinary scholarly index, searched by your keywords (or interests) over the last 30 days; abstracts are reconstructed from OpenAlex's inverted index
+- **Hugging Face Daily Papers** — the human-curated list of trending AI papers
+
+Papers are deduplicated across sources (Hugging Face and arXiv share arXiv IDs), and each carries a source badge in the UI. The ingest endpoint accepts an optional `sources` array to limit which are fetched.
 
 ### Two-tier cost design
 

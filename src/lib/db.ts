@@ -17,6 +17,7 @@ export type Profile = {
 export type Paper = {
   id: number;
   arxiv_id: string;
+  source: string;
   title: string;
   abstract: string;
   authors: string;
@@ -125,6 +126,7 @@ function initSchema(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS papers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       arxiv_id TEXT UNIQUE NOT NULL,
+      source TEXT NOT NULL DEFAULT 'arxiv',
       title TEXT NOT NULL,
       abstract TEXT NOT NULL,
       authors TEXT NOT NULL,
@@ -171,6 +173,11 @@ function initSchema(database: Database.Database) {
   const scoreColumns = database.prepare("SELECT name FROM pragma_table_info('scores')").all() as Array<{ name: string }>;
   if (!scoreColumns.some(c => c.name === 'discovery')) {
     database.exec("ALTER TABLE scores ADD COLUMN discovery TEXT NOT NULL DEFAULT ''");
+  }
+
+  const paperColumns = database.prepare("SELECT name FROM pragma_table_info('papers')").all() as Array<{ name: string }>;
+  if (!paperColumns.some(c => c.name === 'source')) {
+    database.exec("ALTER TABLE papers ADD COLUMN source TEXT NOT NULL DEFAULT 'arxiv'");
   }
 
   database.exec(`
@@ -224,8 +231,8 @@ export function updateProfile(data: Partial<Omit<Profile, 'id' | 'updated_at'>>)
 export function upsertPaper(paper: Omit<Paper, 'id' | 'fetched_at' | 'dismissed'>): Paper {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO papers (arxiv_id, title, abstract, authors, categories, published_at, url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO papers (arxiv_id, source, title, abstract, authors, categories, published_at, url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(arxiv_id) DO UPDATE SET
       title = excluded.title,
       abstract = excluded.abstract,
@@ -237,6 +244,7 @@ export function upsertPaper(paper: Omit<Paper, 'id' | 'fetched_at' | 'dismissed'
   `);
   return stmt.get(
     paper.arxiv_id,
+    paper.source,
     paper.title,
     paper.abstract,
     paper.authors,
@@ -297,6 +305,7 @@ export function getPapersWithScores(options?: {
   return rows.map(row => ({
     id: row.id as number,
     arxiv_id: row.arxiv_id as string,
+    source: row.source as string,
     title: row.title as string,
     abstract: row.abstract as string,
     authors: row.authors as string,
@@ -446,7 +455,7 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
   const rows = db.prepare(`
     SELECT 
       o.*,
-      p.id as paper_id, p.arxiv_id, p.title, p.abstract, p.authors, p.categories, 
+      p.id as paper_id, p.arxiv_id, p.source, p.title, p.abstract, p.authors, p.categories, 
       p.published_at, p.url, p.fetched_at, p.dismissed,
       s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at
     FROM opportunities o
@@ -465,6 +474,7 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
     paper: {
       id: row.paper_id as number,
       arxiv_id: row.arxiv_id as string,
+      source: row.source as string,
       title: row.title as string,
       abstract: row.abstract as string,
       authors: row.authors as string,
