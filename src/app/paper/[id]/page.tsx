@@ -8,6 +8,7 @@ type Score = {
   id: number;
   paper_id: number;
   viability: number;
+  discovery: string;
   rationale: string;
   application_hint: string;
   scored_at: string;
@@ -229,6 +230,11 @@ export default function PaperDetailPage() {
 
           {paper.score && (
             <div className="mt-4 pt-4 border-t border-gray-100">
+              {paper.score.discovery && (
+                <p className="text-sm text-gray-800 mb-1">
+                  <strong>Main discovery:</strong> {paper.score.discovery}
+                </p>
+              )}
               <p className="text-sm text-gray-600">
                 <strong>Score rationale:</strong> {paper.score.rationale}
               </p>

@@ -7,6 +7,7 @@ type Score = {
   id: number;
   paper_id: number;
   viability: number;
+  discovery: string;
   rationale: string;
   application_hint: string;
   scored_at: string;
@@ -80,8 +81,11 @@ function PaperCard({
           </Link>
           <p className="text-sm text-gray-500 mt-1">{paper.authors.split(',').slice(0, 3).join(', ')}{paper.authors.split(',').length > 3 ? ' et al.' : ''}</p>
           
+          {paper.score?.discovery && (
+            <p className="text-sm text-gray-800 mt-2">{paper.score.discovery}</p>
+          )}
           {paper.score && (
-            <p className="text-sm text-gray-600 mt-2 italic">{paper.score.application_hint}</p>
+            <p className="text-sm text-gray-600 mt-1 italic">{paper.score.application_hint}</p>
           )}
 
           {expanded && (
@@ -178,7 +182,7 @@ export default function FeedPage() {
       const scoreRes = await fetch('/api/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 20 }),
+        body: JSON.stringify({ limit: 100 }),
       });
       const scoreData = await scoreRes.json();
 

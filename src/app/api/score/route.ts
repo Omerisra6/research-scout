@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getProfile, getUnscoredPapers, upsertScore } from '@/lib/db';
-import { scorePaper } from '@/lib/llm';
+import { scorePapersBatch } from '@/lib/llm';
+
+const BATCH_SIZE = 10;
 
 export async function POST(request: Request) {
-  const { limit = 10 } = await request.json().catch(() => ({}));
-  
+  const { limit = 100 } = await request.json().catch(() => ({}));
+
   const profile = getProfile();
   const papers = getUnscoredPapers(limit);
 
@@ -14,26 +16,31 @@ export async function POST(request: Request) {
 
   const results = [];
 
-  for (const paper of papers) {
+  for (let i = 0; i < papers.length; i += BATCH_SIZE) {
+    const batch = papers.slice(i, i + BATCH_SIZE);
+
     try {
-      const scoreResult = await scorePaper(
-        {
-          title: paper.title,
-          abstract: paper.abstract,
-          authors: paper.authors,
-          categories: paper.categories,
-        },
+      const scoreResults = await scorePapersBatch(
+        batch.map(p => ({
+          title: p.title,
+          abstract: p.abstract,
+          categories: p.categories,
+        })),
         {
           industries: profile.industries,
           interests: profile.interests,
         }
       );
 
-      const score = upsertScore(paper.id, scoreResult);
-      results.push({ paper_id: paper.id, score });
+      for (let j = 0; j < batch.length; j++) {
+        const score = upsertScore(batch[j].id, scoreResults[j]);
+        results.push({ paper_id: batch[j].id, score });
+      }
     } catch (error) {
-      console.error(`Failed to score paper ${paper.id}:`, error);
-      results.push({ paper_id: paper.id, error: 'Scoring failed' });
+      console.error(`Failed to score batch starting at ${i}:`, error);
+      for (const paper of batch) {
+        results.push({ paper_id: paper.id, error: 'Scoring failed' });
+      }
     }
   }
 

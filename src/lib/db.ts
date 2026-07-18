@@ -31,6 +31,7 @@ export type Score = {
   id: number;
   paper_id: number;
   viability: number;
+  discovery: string;
   rationale: string;
   application_hint: string;
   scored_at: string;
@@ -115,6 +116,7 @@ function initSchema(database: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       paper_id INTEGER UNIQUE NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
       viability INTEGER NOT NULL CHECK (viability >= 0 AND viability <= 10),
+      discovery TEXT NOT NULL DEFAULT '',
       rationale TEXT NOT NULL,
       application_hint TEXT NOT NULL,
       scored_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -139,6 +141,11 @@ function initSchema(database: Database.Database) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  const scoreColumns = database.prepare("SELECT name FROM pragma_table_info('scores')").all() as Array<{ name: string }>;
+  if (!scoreColumns.some(c => c.name === 'discovery')) {
+    database.exec("ALTER TABLE scores ADD COLUMN discovery TEXT NOT NULL DEFAULT ''");
+  }
 }
 
 export function getProfile(): Profile {
@@ -239,7 +246,7 @@ export function getPapersWithScores(options?: {
   const rows = db.prepare(`
     SELECT 
       p.*,
-      s.id as score_id, s.viability, s.rationale, s.application_hint, s.scored_at,
+      s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at,
       o.id as opp_id, o.stage, o.notes, o.updated_at as opp_updated_at
     FROM papers p
     LEFT JOIN scores s ON p.id = s.paper_id
@@ -264,6 +271,7 @@ export function getPapersWithScores(options?: {
       id: row.score_id as number,
       paper_id: row.id as number,
       viability: row.viability as number,
+      discovery: row.discovery as string,
       rationale: row.rationale as string,
       application_hint: row.application_hint as string,
       scored_at: row.scored_at as string,
@@ -302,16 +310,17 @@ export function undismissPaper(id: number): void {
 export function upsertScore(paperId: number, data: Omit<Score, 'id' | 'paper_id' | 'scored_at'>): Score {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO scores (paper_id, viability, rationale, application_hint)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO scores (paper_id, viability, discovery, rationale, application_hint)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(paper_id) DO UPDATE SET
       viability = excluded.viability,
+      discovery = excluded.discovery,
       rationale = excluded.rationale,
       application_hint = excluded.application_hint,
       scored_at = datetime('now')
     RETURNING *
   `);
-  return stmt.get(paperId, data.viability, data.rationale, data.application_hint) as Score;
+  return stmt.get(paperId, data.viability, data.discovery, data.rationale, data.application_hint) as Score;
 }
 
 export function getScoreByPaperId(paperId: number): Score | undefined {
@@ -401,7 +410,7 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
       o.*,
       p.id as paper_id, p.arxiv_id, p.title, p.abstract, p.authors, p.categories, 
       p.published_at, p.url, p.fetched_at, p.dismissed,
-      s.id as score_id, s.viability, s.rationale, s.application_hint, s.scored_at
+      s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at
     FROM opportunities o
     JOIN papers p ON o.paper_id = p.id
     LEFT JOIN scores s ON p.id = s.paper_id
@@ -431,6 +440,7 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
       id: row.score_id as number,
       paper_id: row.paper_id as number,
       viability: row.viability as number,
+      discovery: row.discovery as string,
       rationale: row.rationale as string,
       application_hint: row.application_hint as string,
       scored_at: row.scored_at as string,
