@@ -50,14 +50,36 @@ const KIND_LABELS: Record<string, string> = {
   deepdive: 'Deep-dive analysis',
 };
 
+function digestStatusStyle(status: string): { label: string; cls: string } {
+  switch (status) {
+    case 'sent': return { label: 'Sent', cls: 'bg-green-100 text-green-800' };
+    case 'empty': return { label: 'No papers', cls: 'bg-gray-100 text-gray-700' };
+    case 'error': return { label: 'Failed', cls: 'bg-red-100 text-red-800' };
+    default: return { label: status, cls: 'bg-gray-100 text-gray-700' };
+  }
+}
+
+function formatUtc(sqlUtc: string): string {
+  return new Date(sqlUtc.replace(' ', 'T') + 'Z').toLocaleString();
+}
+
 export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [lastDigest, setLastDigest] = useState<DigestLog | null>(null);
+  const [lastAttempt, setLastAttempt] = useState<DigestLog | null>(null);
   const [sendingDigest, setSendingDigest] = useState(false);
   const [digestStatus, setDigestStatus] = useState('');
+
+  const refreshDigest = async (): Promise<DigestLog | null> => {
+    const res = await fetch('/api/digest');
+    const data = await res.json();
+    setLastDigest(data.last_sent);
+    setLastAttempt(data.last_attempt);
+    return data.last_attempt as DigestLog | null;
+  };
 
   useEffect(() => {
     fetch('/api/profile')
@@ -66,10 +88,28 @@ export default function SettingsPage() {
     fetch('/api/usage')
       .then(res => res.json())
       .then(setUsage);
-    fetch('/api/digest')
-      .then(res => res.json())
-      .then(data => setLastDigest(data.last_sent));
+    refreshDigest();
+    if (typeof window !== 'undefined' && localStorage.getItem('rs_digest_sending') === '1') {
+      setSendingDigest(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!sendingDigest) return;
+    let ticks = 0;
+    const interval = setInterval(async () => {
+      ticks += 1;
+      const attempt = await refreshDigest();
+      const baseline = localStorage.getItem('rs_digest_baseline') ?? '';
+      const finished = attempt && attempt.sent_at !== baseline;
+      if (finished || ticks > 30) {
+        localStorage.removeItem('rs_digest_sending');
+        localStorage.removeItem('rs_digest_baseline');
+        setSendingDigest(false);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [sendingDigest]);
 
   const handleSave = async () => {
     if (!profile) return;
@@ -99,22 +139,23 @@ export default function SettingsPage() {
   };
 
   const handleSendDigest = async () => {
+    localStorage.setItem('rs_digest_sending', '1');
+    localStorage.setItem('rs_digest_baseline', lastAttempt?.sent_at ?? '');
     setSendingDigest(true);
-    setDigestStatus('Scanning, scoring and sending...');
+    setDigestStatus('');
     try {
       const res = await fetch('/api/digest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: true }),
       });
-      const data = await res.json();
-      setDigestStatus(data.detail || data.status);
-      const lastRes = await fetch('/api/digest');
-      const lastData = await lastRes.json();
-      setLastDigest(lastData.last_sent);
+      await res.json();
+      await refreshDigest();
     } catch (error) {
       setDigestStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
+      localStorage.removeItem('rs_digest_sending');
+      localStorage.removeItem('rs_digest_baseline');
       setSendingDigest(false);
     }
   };
@@ -275,21 +316,59 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-            <div className="text-sm text-gray-500">
-              {lastDigest
-                ? `Last sent: ${lastDigest.sent_at} UTC (${lastDigest.paper_count} papers)`
-                : 'No digest sent yet.'}
-              {digestStatus && <span className="block text-gray-700 mt-1">{digestStatus}</span>}
+          <div className="pt-4 border-t border-gray-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-gray-700">Manual send</h3>
+              <button
+                onClick={handleSendDigest}
+                disabled={sendingDigest}
+                className="px-4 py-2 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 transition-colors"
+                title="Save your changes first — the digest uses the saved settings"
+              >
+                {sendingDigest ? 'Sending…' : 'Send Digest Now'}
+              </button>
             </div>
-            <button
-              onClick={handleSendDigest}
-              disabled={sendingDigest}
-              className="px-4 py-2 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 transition-colors"
-              title="Save your changes first — the digest uses the saved settings"
-            >
-              {sendingDigest ? 'Sending...' : 'Send Digest Now'}
-            </button>
+
+            {sendingDigest && (
+              <div className="flex items-center gap-3 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
+                <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                <span className="text-sm text-blue-800">
+                  Scanning, scoring and emailing your digest… this can take up to a minute. You can safely leave this page.
+                </span>
+              </div>
+            )}
+
+            {!sendingDigest && lastAttempt && (
+              <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${digestStatusStyle(lastAttempt.status).cls}`}>
+                    {digestStatusStyle(lastAttempt.status).label}
+                  </span>
+                  <span className="text-sm text-gray-700">
+                    {lastAttempt.status === 'sent' && `${lastAttempt.paper_count} paper${lastAttempt.paper_count === 1 ? '' : 's'} emailed`}
+                    {lastAttempt.status === 'empty' && 'No new papers above your score threshold'}
+                    {lastAttempt.status === 'error' && 'Send failed'}
+                  </span>
+                  <span className="ml-auto text-xs text-gray-400">{formatUtc(lastAttempt.sent_at)}</span>
+                </div>
+                {lastAttempt.status === 'error' && lastAttempt.error && (
+                  <p className="mt-2 text-sm text-red-700 break-words">{lastAttempt.error}</p>
+                )}
+                {lastDigest && lastAttempt.status !== 'sent' && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Last successful send: {formatUtc(lastDigest.sent_at)} ({lastDigest.paper_count} papers)
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!sendingDigest && !lastAttempt && (
+              <p className="text-sm text-gray-500">No digest sent yet.</p>
+            )}
+
+            {digestStatus && !sendingDigest && (
+              <p className="text-sm text-red-700">{digestStatus}</p>
+            )}
           </div>
         </div>
 

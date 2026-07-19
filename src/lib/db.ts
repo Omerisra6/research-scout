@@ -558,6 +558,11 @@ export function getLastDigest(): DigestLog | undefined {
   return db.prepare("SELECT * FROM digest_log WHERE status = 'sent' ORDER BY sent_at DESC LIMIT 1").get() as DigestLog | undefined;
 }
 
+export function getLastDigestAttempt(): DigestLog | undefined {
+  const db = getDb();
+  return db.prepare('SELECT * FROM digest_log ORDER BY sent_at DESC LIMIT 1').get() as DigestLog | undefined;
+}
+
 export function getLastDigestRunAt(): string | undefined {
   const db = getDb();
   const row = db.prepare('SELECT sent_at FROM digest_log ORDER BY sent_at DESC LIMIT 1').get() as { sent_at: string } | undefined;

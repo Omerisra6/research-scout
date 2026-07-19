@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { runDailyDigest } from '@/lib/digest';
-import { getLastDigest } from '@/lib/db';
+import { getLastDigest, getLastDigestAttempt } from '@/lib/db';
 
 export async function GET() {
   const last = getLastDigest();
-  return NextResponse.json({ last_sent: last ?? null });
+  const lastAttempt = getLastDigestAttempt();
+  return NextResponse.json({ last_sent: last ?? null, last_attempt: lastAttempt ?? null });
 }
 
 export async function POST(request: Request) {
