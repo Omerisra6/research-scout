@@ -12,13 +12,13 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV DB_PATH=/data/research-scout.db
+ENV HOSTNAME=0.0.0.0
 
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-RUN mkdir -p /data && chown -R node:node /data /app
-USER node
+RUN mkdir -p /data
 
 VOLUME /data
 EXPOSE 3000
