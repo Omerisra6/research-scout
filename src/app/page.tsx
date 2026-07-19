@@ -9,6 +9,8 @@ type Score = {
   paper_id: number;
   viability: number;
   discovery: string;
+  tldr: string;
+  tldr_points: string[];
   rationale: string;
   application_hint: string;
   scored_at: string;
@@ -108,12 +110,27 @@ function PaperCard({
             </h3>
           </Link>
           <p className="text-sm text-gray-500 mt-1">{paper.authors.split(',').slice(0, 3).join(', ')}{paper.authors.split(',').length > 3 ? ' et al.' : ''}</p>
-          
-          {paper.score?.discovery && (
-            <p className="text-sm text-gray-800 mt-2">{paper.score.discovery}</p>
+
+          {paper.score && (paper.score.tldr || paper.score.discovery || paper.score.tldr_points.length > 0) && (
+            <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">TL;DR</p>
+              {(paper.score.tldr || paper.score.discovery) && (
+                <p className="text-sm text-gray-800">{paper.score.tldr || paper.score.discovery}</p>
+              )}
+              {paper.score.tldr_points.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {paper.score.tldr_points.map((point, i) => (
+                    <li key={i} className="flex gap-2 text-sm text-gray-600">
+                      <span className="mt-0.5 text-blue-500">•</span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
-          {paper.score && (
-            <p className="text-sm text-gray-600 mt-1 italic">{paper.score.application_hint}</p>
+          {paper.score?.application_hint && (
+            <p className="text-sm text-gray-600 mt-2 italic">💡 {paper.score.application_hint}</p>
           )}
 
           {expanded && (
@@ -278,10 +295,13 @@ export default function FeedPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-white/90 backdrop-blur border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-gray-900">Research Scout</h1>
+            <Link href="/" className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-sm font-bold">RS</span>
+              <h1 className="text-xl font-semibold text-gray-900">Research Scout</h1>
+            </Link>
             <div className="flex items-center gap-3">
               {totalCost !== null && (
                 <Link

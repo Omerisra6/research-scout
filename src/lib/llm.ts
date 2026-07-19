@@ -55,6 +55,8 @@ function trackUsage(
 export type ScoreResult = {
   viability: number;
   discovery: string;
+  tldr: string;
+  tldr_points: string[];
   rationale: string;
   application_hint: string;
 };
@@ -62,6 +64,8 @@ export type ScoreResult = {
 const FALLBACK_SCORE: ScoreResult = {
   viability: 5,
   discovery: '',
+  tldr: '',
+  tldr_points: [],
   rationale: 'Unable to parse LLM response',
   application_hint: 'Review manually',
 };
@@ -98,11 +102,14 @@ Respond with a valid JSON array, one object per paper in the same order, no othe
   {
     "index": <paper number>,
     "viability": <number 0-10>,
-    "discovery": "<one plain-language sentence explaining what this paper achieved or discovered — no jargon, understandable by a non-expert>",
+    "tldr": "<1-2 plain-language sentences summarizing what this paper achieved or discovered — no jargon, understandable by a non-expert>",
+    "tldr_points": ["<key takeaway>", "<why it matters commercially>", "<what makes it novel or timely>"],
     "rationale": "<one sentence explaining the score>",
     "application_hint": "<one sentence suggesting a potential application or product>"
   }
-]`;
+]
+
+Each tldr_points array should contain exactly 3 short, concrete bullet points (max ~15 words each).`;
 
   const paperList = papers
     .map((p, i) => `Paper ${i}:
@@ -119,7 +126,7 @@ Abstract: ${truncateAbstract(p.abstract)}`)
       { role: 'user', content: `Papers to evaluate:\n\n${paperList}` },
     ],
     temperature: 0.3,
-    max_tokens: 300 * papers.length + 1000,
+    max_tokens: 450 * papers.length + 1000,
     reasoning_effort: 'low',
   });
 
@@ -140,9 +147,12 @@ Abstract: ${truncateAbstract(p.abstract)}`)
     return papers.map((_, i) => {
       const item = byIndex.get(i) || parsed[i];
       if (!item) return { ...FALLBACK_SCORE };
+      const tldr = String(item.tldr || '');
       return {
         viability: Math.min(10, Math.max(0, Number(item.viability) || 0)),
-        discovery: String(item.discovery || ''),
+        discovery: String(item.discovery || tldr),
+        tldr,
+        tldr_points: Array.isArray(item.tldr_points) ? item.tldr_points.map(String).slice(0, 4) : [],
         rationale: String(item.rationale || ''),
         application_hint: String(item.application_hint || ''),
       };
