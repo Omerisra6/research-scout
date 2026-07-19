@@ -9,6 +9,8 @@ type Score = {
   paper_id: number;
   viability: number;
   discovery: string;
+  tldr: string;
+  tldr_points: string[];
   rationale: string;
   application_hint: string;
   scored_at: string;
@@ -233,18 +235,32 @@ export default function PaperDetailPage() {
 
           <h2 className="text-xl font-semibold text-gray-900 mb-2">{paper.title}</h2>
           <p className="text-gray-600 mb-4">{paper.authors}</p>
-          
+
+          {paper.score && (paper.score.tldr || paper.score.discovery || paper.score.tldr_points.length > 0) && (
+            <div className="mb-4 rounded-xl bg-blue-50 border border-blue-100 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">TL;DR</p>
+              {(paper.score.tldr || paper.score.discovery) && (
+                <p className="text-gray-800">{paper.score.tldr || paper.score.discovery}</p>
+              )}
+              {paper.score.tldr_points.length > 0 && (
+                <ul className="mt-3 space-y-1.5">
+                  {paper.score.tldr_points.map((point, i) => (
+                    <li key={i} className="flex gap-2 text-sm text-gray-700">
+                      <span className="mt-0.5 text-blue-500">•</span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <div className="prose prose-sm max-w-none">
             <p className="text-gray-700">{paper.abstract}</p>
           </div>
 
           {paper.score && (
             <div className="mt-4 pt-4 border-t border-gray-100">
-              {paper.score.discovery && (
-                <p className="text-sm text-gray-800 mb-1">
-                  <strong>Main discovery:</strong> {paper.score.discovery}
-                </p>
-              )}
               <p className="text-sm text-gray-600">
                 <strong>Score rationale:</strong> {paper.score.rationale}
               </p>

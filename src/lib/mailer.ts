@@ -70,7 +70,8 @@ export function renderDigest(papers: PaperWithScore[], baseUrl: string): { subje
                 </table>
                 <a href="${baseUrl}/paper/${paper.id}" style="display:block;margin:12px 0 6px;font-size:18px;line-height:1.35;font-weight:700;color:#111827;text-decoration:none;">${escapeHtml(paper.title)}</a>
                 <p style="margin:0 0 12px;font-size:13px;color:#6b7280;">${escapeHtml(authors)}</p>
-                ${score.discovery ? `<p style="margin:0 0 10px;font-size:15px;line-height:1.5;color:#1f2937;">${escapeHtml(score.discovery)}</p>` : ''}
+                ${(score.tldr || score.discovery) ? `<p style="margin:0 0 8px;font-size:15px;line-height:1.5;color:#1f2937;">${escapeHtml(score.tldr || score.discovery)}</p>` : ''}
+                ${score.tldr_points && score.tldr_points.length > 0 ? `<ul style="margin:0 0 10px;padding-left:20px;">${score.tldr_points.map(pt => `<li style="margin:2px 0;font-size:14px;line-height:1.45;color:#374151;">${escapeHtml(pt)}</li>`).join('')}</ul>` : ''}
                 ${score.application_hint ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:10px 14px;background:#f9fafb;border-left:3px solid #d1d5db;border-radius:6px;font-size:13px;line-height:1.5;font-style:italic;color:#4b5563;">${escapeHtml(score.application_hint)}</td></tr></table>` : ''}
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:16px;">
                   <tr>
@@ -125,7 +126,10 @@ export function renderDigest(papers: PaperWithScore[], baseUrl: string): { subje
 
   const text = papers.map(paper => {
     const score = paper.score!;
-    return `[${score.viability}/10] ${paper.title}\n${score.discovery}\n${baseUrl}/paper/${paper.id}\n`;
+    const points = score.tldr_points && score.tldr_points.length > 0
+      ? '\n' + score.tldr_points.map(pt => `- ${pt}`).join('\n')
+      : '';
+    return `[${score.viability}/10] ${paper.title}\n${score.tldr || score.discovery}${points}\n${baseUrl}/paper/${paper.id}\n`;
   }).join('\n');
 
   return { subject, html, text };

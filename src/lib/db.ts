@@ -45,10 +45,22 @@ export type Score = {
   paper_id: number;
   viability: number;
   discovery: string;
+  tldr: string;
+  tldr_points: string[];
   rationale: string;
   application_hint: string;
   scored_at: string;
 };
+
+function parseTldrPoints(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
 
 export type Analysis = {
   id: number;
@@ -185,6 +197,12 @@ function initSchema(database: Database.Database) {
   const scoreColumns = database.prepare("SELECT name FROM pragma_table_info('scores')").all() as Array<{ name: string }>;
   if (!scoreColumns.some(c => c.name === 'discovery')) {
     database.exec("ALTER TABLE scores ADD COLUMN discovery TEXT NOT NULL DEFAULT ''");
+  }
+  if (!scoreColumns.some(c => c.name === 'tldr')) {
+    database.exec("ALTER TABLE scores ADD COLUMN tldr TEXT NOT NULL DEFAULT ''");
+  }
+  if (!scoreColumns.some(c => c.name === 'tldr_points')) {
+    database.exec("ALTER TABLE scores ADD COLUMN tldr_points TEXT NOT NULL DEFAULT ''");
   }
 
   const paperColumns = database.prepare("SELECT name FROM pragma_table_info('papers')").all() as Array<{ name: string }>;
@@ -344,7 +362,7 @@ export function getPapersWithScores(options?: {
   const rows = db.prepare(`
     SELECT 
       p.*,
-      s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at,
+      s.id as score_id, s.viability, s.discovery, s.tldr, s.tldr_points, s.rationale, s.application_hint, s.scored_at,
       o.id as opp_id, o.stage, o.notes, o.updated_at as opp_updated_at
     FROM papers p
     LEFT JOIN scores s ON p.id = s.paper_id
@@ -371,6 +389,8 @@ export function getPapersWithScores(options?: {
       paper_id: row.id as number,
       viability: row.viability as number,
       discovery: row.discovery as string,
+      tldr: row.tldr as string,
+      tldr_points: parseTldrPoints(row.tldr_points),
       rationale: row.rationale as string,
       application_hint: row.application_hint as string,
       scored_at: row.scored_at as string,
@@ -409,22 +429,35 @@ export function undismissPaper(id: number): void {
 export function upsertScore(paperId: number, data: Omit<Score, 'id' | 'paper_id' | 'scored_at'>): Score {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO scores (paper_id, viability, discovery, rationale, application_hint)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO scores (paper_id, viability, discovery, tldr, tldr_points, rationale, application_hint)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(paper_id) DO UPDATE SET
       viability = excluded.viability,
       discovery = excluded.discovery,
+      tldr = excluded.tldr,
+      tldr_points = excluded.tldr_points,
       rationale = excluded.rationale,
       application_hint = excluded.application_hint,
       scored_at = datetime('now')
     RETURNING *
   `);
-  return stmt.get(paperId, data.viability, data.discovery, data.rationale, data.application_hint) as Score;
+  const row = stmt.get(
+    paperId,
+    data.viability,
+    data.discovery,
+    data.tldr,
+    JSON.stringify(data.tldr_points ?? []),
+    data.rationale,
+    data.application_hint
+  ) as Record<string, unknown>;
+  return { ...row, tldr_points: parseTldrPoints(row.tldr_points) } as Score;
 }
 
 export function getScoreByPaperId(paperId: number): Score | undefined {
   const db = getDb();
-  return db.prepare('SELECT * FROM scores WHERE paper_id = ?').get(paperId) as Score | undefined;
+  const row = db.prepare('SELECT * FROM scores WHERE paper_id = ?').get(paperId) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return { ...row, tldr_points: parseTldrPoints(row.tldr_points) } as Score;
 }
 
 export function upsertAnalysis(paperId: number, data: Omit<Analysis, 'id' | 'paper_id' | 'analyzed_at'>): Analysis {
@@ -509,7 +542,7 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
       o.*,
       p.id as paper_id, p.arxiv_id, p.source, p.title, p.abstract, p.authors, p.categories, 
       p.published_at, p.url, p.fetched_at, p.dismissed,
-      s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at
+      s.id as score_id, s.viability, s.discovery, s.tldr, s.tldr_points, s.rationale, s.application_hint, s.scored_at
     FROM opportunities o
     JOIN papers p ON o.paper_id = p.id
     LEFT JOIN scores s ON p.id = s.paper_id
@@ -541,6 +574,8 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
       paper_id: row.paper_id as number,
       viability: row.viability as number,
       discovery: row.discovery as string,
+      tldr: row.tldr as string,
+      tldr_points: parseTldrPoints(row.tldr_points),
       rationale: row.rationale as string,
       application_hint: row.application_hint as string,
       scored_at: row.scored_at as string,
@@ -590,7 +625,7 @@ export function getDigestPapers(sinceIso: string | null, minScore: number): Pape
   const rows = db.prepare(`
     SELECT
       p.*,
-      s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at
+      s.id as score_id, s.viability, s.discovery, s.tldr, s.tldr_points, s.rationale, s.application_hint, s.scored_at
     FROM papers p
     JOIN scores s ON p.id = s.paper_id
     WHERE ${conditions.join(' AND ')}
@@ -614,6 +649,8 @@ export function getDigestPapers(sinceIso: string | null, minScore: number): Pape
       paper_id: row.id as number,
       viability: row.viability as number,
       discovery: row.discovery as string,
+      tldr: row.tldr as string,
+      tldr_points: parseTldrPoints(row.tldr_points),
       rationale: row.rationale as string,
       application_hint: row.application_hint as string,
       scored_at: row.scored_at as string,
