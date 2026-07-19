@@ -35,6 +35,12 @@ Open [http://localhost:3000](http://localhost:3000), review your profile in Sett
 | `LLM_BASE_URL` | API base URL | `https://api.openai.com/v1` |
 | `LLM_MODEL` | Model for deep-dive analysis | `gpt-4o-mini` |
 | `LLM_TRIAGE_MODEL` | Cheaper model for batch feed scoring | falls back to `LLM_MODEL` |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_SECURE` | SMTP server for the daily digest email | Digest disabled without `SMTP_HOST` |
+| `MAIL_FROM` | From address for digest emails | `SMTP_USER` |
+| `AUTH_USERS` | Login whitelist: comma-separated `email:password` pairs | Empty (auth disabled) |
+| `AUTH_SECRET` | Secret for signing session cookies (required with `AUTH_USERS`) | — |
+| `APP_BASE_URL` | Public URL used in digest email links | `http://localhost:3000` |
+| `DB_PATH` | SQLite database file location | `./research-scout.db` |
 
 Works with any OpenAI-compatible endpoint. For Google Gemini use:
 
@@ -83,6 +89,27 @@ Every LLM call records the actual token usage reported by the API and computes c
 ### Opportunity tracker
 
 Track papers through your evaluation pipeline: Inbox → Exploring → Contacted Author → Validating → Active / Dropped, with inline notes on each card.
+
+## Daily Email Digest
+
+With SMTP configured, the app can scan, score, and email you the day's promising papers automatically. Enable it in Settings: set a recipient email, a send hour (server local time, `TZ` in Docker), and a minimum score. The scheduler runs inside the server process, so the server must stay running (`npm run start` or Docker). Each digest covers papers fetched since the last successful one, and "Send Digest Now" in Settings triggers an immediate test send.
+
+## Authentication
+
+Set `AUTH_USERS` to a comma-separated list of `email:password` pairs (e.g. `alice@example.com:s3cret,bob@example.com:hunter2`) and `AUTH_SECRET` to a random string (`openssl rand -hex 32`). Every page and API route then requires login; sessions last 30 days via a signed httpOnly cookie. Leave `AUTH_USERS` empty to run without authentication (local use only). All users share the same profile and feed.
+
+## Deploying
+
+The app needs a persistent Node server (SQLite + in-process scheduler), so deploy it with Docker on any VPS rather than a serverless platform:
+
+```bash
+cp .env.example .env
+# Fill in LLM_API_KEY, SMTP_*, AUTH_USERS, AUTH_SECRET, and APP_BASE_URL
+
+docker compose up --build -d
+```
+
+The database lives in the `scout-data` volume and survives container restarts. Put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front and set `APP_BASE_URL` to your `https://` URL so digest links and secure cookies work correctly.
 
 ## Stack
 

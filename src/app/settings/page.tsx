@@ -9,7 +9,18 @@ type Profile = {
   interests: string;
   arxiv_categories: string;
   keywords: string;
+  digest_email: string;
+  digest_enabled: number;
+  digest_hour: number;
+  digest_min_score: number;
   updated_at: string;
+};
+
+type DigestLog = {
+  sent_at: string;
+  paper_count: number;
+  status: string;
+  error: string;
 };
 
 type UsageSummary = {
@@ -44,6 +55,9 @@ export default function SettingsPage() {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [lastDigest, setLastDigest] = useState<DigestLog | null>(null);
+  const [sendingDigest, setSendingDigest] = useState(false);
+  const [digestStatus, setDigestStatus] = useState('');
 
   useEffect(() => {
     fetch('/api/profile')
@@ -52,6 +66,9 @@ export default function SettingsPage() {
     fetch('/api/usage')
       .then(res => res.json())
       .then(setUsage);
+    fetch('/api/digest')
+      .then(res => res.json())
+      .then(data => setLastDigest(data.last_sent));
   }, []);
 
   const handleSave = async () => {
@@ -67,6 +84,10 @@ export default function SettingsPage() {
         interests: profile.interests,
         arxiv_categories: profile.arxiv_categories,
         keywords: profile.keywords,
+        digest_email: profile.digest_email,
+        digest_enabled: profile.digest_enabled,
+        digest_hour: profile.digest_hour,
+        digest_min_score: profile.digest_min_score,
       }),
     });
     
@@ -75,6 +96,27 @@ export default function SettingsPage() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSendDigest = async () => {
+    setSendingDigest(true);
+    setDigestStatus('Scanning, scoring and sending...');
+    try {
+      const res = await fetch('/api/digest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      const data = await res.json();
+      setDigestStatus(data.detail || data.status);
+      const lastRes = await fetch('/api/digest');
+      const lastData = await lastRes.json();
+      setLastDigest(lastData.last_sent);
+    } catch (error) {
+      setDigestStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSendingDigest(false);
+    }
   };
 
   if (!profile) {
@@ -167,6 +209,87 @@ export default function SettingsPage() {
             <p className="mt-1 text-sm text-gray-500">
               Comma-separated keywords to filter papers. Leave empty to fetch all papers from selected categories.
             </p>
+          </div>
+        </div>
+
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Daily Email Digest</h2>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={profile.digest_enabled === 1}
+                onChange={e => setProfile({ ...profile, digest_enabled: e.target.checked ? 1 : 0 })}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-700">Enabled</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Recipient Email
+            </label>
+            <input
+              type="email"
+              value={profile.digest_email}
+              onChange={e => setProfile({ ...profile, digest_email: e.target.value })}
+              placeholder="you@example.com"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              Where the daily digest is sent. SMTP credentials are configured server-side via environment variables.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Send Hour
+              </label>
+              <select
+                value={profile.digest_hour}
+                onChange={e => setProfile({ ...profile, digest_hour: Number(e.target.value) })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                ))}
+              </select>
+              <p className="mt-1 text-sm text-gray-500">Server local time.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Minimum Score
+              </label>
+              <select
+                value={profile.digest_min_score}
+                onChange={e => setProfile({ ...profile, digest_min_score: Number(e.target.value) })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              >
+                {Array.from({ length: 11 }, (_, s) => (
+                  <option key={s} value={s}>{s}+</option>
+                ))}
+              </select>
+              <p className="mt-1 text-sm text-gray-500">Only include papers scored at or above this.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <div className="text-sm text-gray-500">
+              {lastDigest
+                ? `Last sent: ${lastDigest.sent_at} UTC (${lastDigest.paper_count} papers)`
+                : 'No digest sent yet.'}
+              {digestStatus && <span className="block text-gray-700 mt-1">{digestStatus}</span>}
+            </div>
+            <button
+              onClick={handleSendDigest}
+              disabled={sendingDigest}
+              className="px-4 py-2 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 transition-colors"
+              title="Save your changes first — the digest uses the saved settings"
+            >
+              {sendingDigest ? 'Sending...' : 'Send Digest Now'}
+            </button>
           </div>
         </div>
 

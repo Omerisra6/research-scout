@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const DB_PATH = path.join(process.cwd(), 'research-scout.db');
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'research-scout.db');
 
 let db: Database.Database | null = null;
 
@@ -11,7 +11,19 @@ export type Profile = {
   interests: string;
   arxiv_categories: string;
   keywords: string;
+  digest_email: string;
+  digest_enabled: number;
+  digest_hour: number;
+  digest_min_score: number;
   updated_at: string;
+};
+
+export type DigestLog = {
+  id: number;
+  sent_at: string;
+  paper_count: number;
+  status: string;
+  error: string;
 };
 
 export type Paper = {
@@ -180,6 +192,30 @@ function initSchema(database: Database.Database) {
     database.exec("ALTER TABLE papers ADD COLUMN source TEXT NOT NULL DEFAULT 'arxiv'");
   }
 
+  const profileColumns = database.prepare("SELECT name FROM pragma_table_info('profile')").all() as Array<{ name: string }>;
+  if (!profileColumns.some(c => c.name === 'digest_email')) {
+    database.exec("ALTER TABLE profile ADD COLUMN digest_email TEXT NOT NULL DEFAULT ''");
+  }
+  if (!profileColumns.some(c => c.name === 'digest_enabled')) {
+    database.exec('ALTER TABLE profile ADD COLUMN digest_enabled INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!profileColumns.some(c => c.name === 'digest_hour')) {
+    database.exec('ALTER TABLE profile ADD COLUMN digest_hour INTEGER NOT NULL DEFAULT 8');
+  }
+  if (!profileColumns.some(c => c.name === 'digest_min_score')) {
+    database.exec('ALTER TABLE profile ADD COLUMN digest_min_score INTEGER NOT NULL DEFAULT 6');
+  }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS digest_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+      paper_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'sent',
+      error TEXT NOT NULL DEFAULT ''
+    );
+  `);
+
   database.exec(`
     CREATE TABLE IF NOT EXISTS llm_usage (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,6 +254,22 @@ export function updateProfile(data: Partial<Omit<Profile, 'id' | 'updated_at'>>)
   if (data.keywords !== undefined) {
     fields.push('keywords = ?');
     values.push(data.keywords);
+  }
+  if (data.digest_email !== undefined) {
+    fields.push('digest_email = ?');
+    values.push(data.digest_email);
+  }
+  if (data.digest_enabled !== undefined) {
+    fields.push('digest_enabled = ?');
+    values.push(data.digest_enabled ? 1 : 0);
+  }
+  if (data.digest_hour !== undefined) {
+    fields.push('digest_hour = ?');
+    values.push(data.digest_hour);
+  }
+  if (data.digest_min_score !== undefined) {
+    fields.push('digest_min_score = ?');
+    values.push(data.digest_min_score);
   }
 
   if (fields.length > 0) {
@@ -499,6 +551,69 @@ export function getOpportunitiesByStage(stage?: OpportunityStage): Array<Opportu
 export function deleteOpportunity(paperId: number): void {
   const db = getDb();
   db.prepare('DELETE FROM opportunities WHERE paper_id = ?').run(paperId);
+}
+
+export function getLastDigest(): DigestLog | undefined {
+  const db = getDb();
+  return db.prepare("SELECT * FROM digest_log WHERE status = 'sent' ORDER BY sent_at DESC LIMIT 1").get() as DigestLog | undefined;
+}
+
+export function getLastDigestRunAt(): string | undefined {
+  const db = getDb();
+  const row = db.prepare('SELECT sent_at FROM digest_log ORDER BY sent_at DESC LIMIT 1').get() as { sent_at: string } | undefined;
+  return row?.sent_at;
+}
+
+export function recordDigest(data: Pick<DigestLog, 'paper_count' | 'status' | 'error'>): void {
+  const db = getDb();
+  db.prepare('INSERT INTO digest_log (paper_count, status, error) VALUES (?, ?, ?)')
+    .run(data.paper_count, data.status, data.error);
+}
+
+export function getDigestPapers(sinceIso: string | null, minScore: number): PaperWithScore[] {
+  const db = getDb();
+  const conditions = ['p.dismissed = 0', 's.viability >= ?'];
+  const params: unknown[] = [minScore];
+
+  if (sinceIso) {
+    conditions.push('p.fetched_at > ?');
+    params.push(sinceIso);
+  } else {
+    conditions.push("p.fetched_at > datetime('now', '-1 day')");
+  }
+
+  const rows = db.prepare(`
+    SELECT
+      p.*,
+      s.id as score_id, s.viability, s.discovery, s.rationale, s.application_hint, s.scored_at
+    FROM papers p
+    JOIN scores s ON p.id = s.paper_id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY s.viability DESC, p.published_at DESC
+  `).all(...params) as Array<Record<string, unknown>>;
+
+  return rows.map(row => ({
+    id: row.id as number,
+    arxiv_id: row.arxiv_id as string,
+    source: row.source as string,
+    title: row.title as string,
+    abstract: row.abstract as string,
+    authors: row.authors as string,
+    categories: row.categories as string,
+    published_at: row.published_at as string,
+    url: row.url as string,
+    fetched_at: row.fetched_at as string,
+    dismissed: row.dismissed as number,
+    score: {
+      id: row.score_id as number,
+      paper_id: row.id as number,
+      viability: row.viability as number,
+      discovery: row.discovery as string,
+      rationale: row.rationale as string,
+      application_hint: row.application_hint as string,
+      scored_at: row.scored_at as string,
+    },
+  }));
 }
 
 export function recordLlmUsage(data: Omit<LlmUsage, 'id' | 'created_at'>): void {
