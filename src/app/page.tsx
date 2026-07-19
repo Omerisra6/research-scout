@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 type Score = {
   id: number;
@@ -167,6 +168,7 @@ function PaperCard({
 }
 
 export default function FeedPage() {
+  const router = useRouter();
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -174,6 +176,20 @@ export default function FeedPage() {
   const [minScore, setMinScore] = useState<number | ''>('');
   const [status, setStatus] = useState('');
   const [totalCost, setTotalCost] = useState<number | null>(null);
+  const [authEnabled, setAuthEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(res => res.json())
+      .then(data => setAuthEnabled(data.authEnabled))
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  };
 
   const fetchUsage = useCallback(async () => {
     const res = await fetch('/api/usage');
@@ -282,6 +298,14 @@ export default function FeedPage() {
               <Link href="/settings" className="text-gray-600 hover:text-gray-900">
                 Settings
               </Link>
+              {authEnabled && (
+                <button
+                  onClick={handleLogout}
+                  className="text-gray-400 hover:text-gray-600 text-sm"
+                >
+                  Log out
+                </button>
+              )}
             </div>
           </div>
         </div>
