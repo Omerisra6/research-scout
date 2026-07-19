@@ -20,7 +20,6 @@ COPY --from=builder /app/public ./public
 
 RUN mkdir -p /data
 
-VOLUME /data
 EXPOSE 3000
 
 CMD ["node", "server.js"]
